@@ -6,8 +6,7 @@ FFS调度仿真器
 
 import numpy as np
 from typing import Dict, List, Tuple
-from mealpy import Problem
-from mealpy.utils.space import FloatVar
+from mealpy import Problem, FloatVar
 
 
 class FFSSimulator(Problem):
@@ -47,20 +46,23 @@ class FFSSimulator(Problem):
         self.num_machines = data['num_machines']
         self.total_ops = self.num_orders * self.num_stages
         
+        # 初始化mealpy Problem
         # 染色体维度: OS(25) + MS(25) = 50
         # 使用FloatVar定义变量边界，适配新版mealpy API
+                # 染色体维度: OS(25) + MS(25) = 50
+        lb = [0.0] * (self.total_ops * 2)
         bounds = []
         for _ in range(self.total_ops * 2):
             bounds.append(FloatVar(lb=0.0, ub=0.9999))
-        
         super().__init__(bounds=bounds, minmax="min", **kwargs)
+      
         
         # 缓存数据
         self._total_processing_times = {}
         self._precompute_processing_times()
         
         print(f"✅ FFSSimulator初始化完成")
-        print(f"  - 染色体维度: {len(bounds)}")
+        print(f"  - 染色体维度: {len(lb)}")
         print(f"  - 订单数: {self.num_orders}")
         print(f"  - 工序阶段数: {self.num_stages}")
         print(f"  - 设备数: {self.num_machines}")
@@ -110,10 +112,30 @@ class FFSSimulator(Problem):
                 if len(available_machines) == 0:
                     raise ValueError(f"工序{stage_idx}没有可用设备!")
                 
-                # 区间映射选择设备
+                # 区间映射选择设备(增强版:自动避开inf值设备)
                 machine_idx_in_list = int(m_value * len(available_machines))
                 machine_idx_in_list = min(machine_idx_in_list, len(available_machines) - 1)
-                selected_machine_id = available_machines[machine_idx_in_list]
+                
+                # 尝试选择有效设备
+                selected_machine_id = None
+                for attempt in range(len(available_machines)):
+                    test_idx = (machine_idx_in_list + attempt) % len(available_machines)
+                    test_machine_id = available_machines[test_idx]
+                    test_machine_idx = self.machine_list.index(test_machine_id)
+                    
+                    # 检查加工时间是否有效
+                    time_per_unit = self.p_matrix[order_idx, stage_idx, test_machine_idx]
+                    if time_per_unit < np.inf and time_per_unit > 0:
+                        selected_machine_id = test_machine_id
+                        break
+                
+                if selected_machine_id is None:
+                    # 所有设备都是inf,报错
+                    raise ValueError(
+                        f"订单{order_idx}的工序{stage_idx}所有可用设备的加工时间都是inf!\n"
+                        f"可用设备: {available_machines}\n"
+                        f"请检查p_matrix数据"
+                    )
                 
                 machine_assignment[(order_idx, stage_idx)] = selected_machine_id
         
@@ -132,6 +154,13 @@ class FFSSimulator(Problem):
                 
                 # 计算加工时间
                 time_per_unit = self.p_matrix[order_idx, stage_idx, machine_idx]
+                
+                # 安全检查
+                if time_per_unit >= np.inf or time_per_unit <= 0:
+                    raise ValueError(
+                        f"订单{order_id}工序{stage_idx}设备{machine_id}的加工时间异常: {time_per_unit}"
+                    )
+                
                 processing_time = time_per_unit * qty
                 
                 operations.append({
@@ -322,7 +351,7 @@ class FFSSimulator(Problem):
         
         except Exception as e:
             print(f"❌ 适应度评估错误: {e}")
-            return 1e10  # 返回极大但有限的惩罚值
+            return 1e10  # 返回极大惩罚值
     
     def evaluate_solution(self, solution: np.ndarray) -> Dict:
         """

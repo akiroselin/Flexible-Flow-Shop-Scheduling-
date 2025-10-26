@@ -155,15 +155,21 @@ class DataPreprocessor:
         self.stage_to_machines = {}
         for stage_idx, stage_name in enumerate(self.stage_names):
             machine_type = stage_type_mapping.get(stage_name, 'BLU组装设备')
-            self.stage_to_machines[stage_idx] = machine_type_map.get(machine_type, [])
+            machines_list = machine_type_map.get(machine_type, [])
+            if not machines_list:
+                # 容错:如果该类型没有设备,使用所有设备
+                print(f"⚠️ 警告: 工序 '{stage_name}' 没有找到类型为 '{machine_type}' 的设备,使用所有设备")
+                machines_list = self.machine_list
+            self.stage_to_machines[stage_idx] = machines_list
         
         # 4. 构建p_matrix [order_idx, stage_idx, machine_idx]
         num_orders = len(self.order_list)
         num_machines = len(self.machine_list)
         self.p_matrix = np.full((num_orders, num_stages, num_machines), np.inf)
         
-        # 创建line到machine的映射
-        line_machine_map = {}
+        # 创建line到machine的映射(需要更精确的逻辑)
+        line_to_stage_to_machine = {}
+        
         for _, row in self.process_times_df.iterrows():
             line = row['line']
             stage = row['stage']
@@ -174,24 +180,79 @@ class DataPreprocessor:
                 continue
             stage_idx = self.stage_names.index(stage)
             
-            # 找到该line对应的machine
-            if line not in line_machine_map:
-                # 推断line到machine的对应关系(基于设备类型)
-                machine_type = stage_type_mapping.get(stage, 'BLU组装设备')
-                machines_of_type = machine_type_map.get(machine_type, [])
-                
-                # Line_1 -> 第一台设备, Line_2 -> 第二台设备
-                if 'Line_1' in line or 'line_1' in line.lower():
-                    line_machine_map[line] = machines_of_type[0] if len(machines_of_type) > 0 else None
-                elif 'Line_2' in line or 'line_2' in line.lower():
-                    line_machine_map[line] = machines_of_type[1] if len(machines_of_type) > 1 else None
+            # 确定这个line-stage组合对应的设备
+            machine_type = stage_type_mapping.get(stage, 'BLU组装设备')
+            machines_of_type = machine_type_map.get(machine_type, [])
             
-            machine_id = line_machine_map.get(line)
+            if len(machines_of_type) == 0:
+                print(f"⚠️ 警告: 工序 '{stage}' 没有可用设备,跳过")
+                continue
+            
+            # 映射逻辑:Line_1 -> 第1台设备, Line_2 -> 第2台设备
+            machine_id = None
+            if 'Line_1' in line or 'line_1' in line.lower():
+                machine_id = machines_of_type[0]
+            elif 'Line_2' in line or 'line_2' in line.lower():
+                machine_id = machines_of_type[1] if len(machines_of_type) > 1 else machines_of_type[0]
+            
             if machine_id and machine_id in self.machine_list:
                 machine_idx = self.machine_list.index(machine_id)
                 # 对所有订单设置相同的加工时间
                 for order_idx in range(num_orders):
                     self.p_matrix[order_idx, stage_idx, machine_idx] = time
+                
+                # 记录映射关系
+                if line not in line_to_stage_to_machine:
+                    line_to_stage_to_machine[line] = {}
+                line_to_stage_to_machine[line][stage_idx] = machine_id
+        
+        # 关键修复:检查并填充缺失的p_matrix值
+        print("\n🔍 检查p_matrix完整性...")
+        for stage_idx in range(num_stages):
+            stage_name = self.stage_names[stage_idx]
+            available_machines = self.stage_to_machines[stage_idx]
+            
+            for machine_id in available_machines:
+                machine_idx = self.machine_list.index(machine_id)
+                
+                # 检查是否有订单-工序-设备的时间是inf
+                has_inf = False
+                for order_idx in range(num_orders):
+                    if self.p_matrix[order_idx, stage_idx, machine_idx] == np.inf:
+                        has_inf = True
+                        break
+                
+                if has_inf:
+                    # 尝试从其他设备复制时间(作为备用)
+                    for other_machine_id in available_machines:
+                        other_machine_idx = self.machine_list.index(other_machine_id)
+                        if self.p_matrix[0, stage_idx, other_machine_idx] < np.inf:
+                            # 找到了有效值,复制给当前设备
+                            for order_idx in range(num_orders):
+                                if self.p_matrix[order_idx, stage_idx, machine_idx] == np.inf:
+                                    self.p_matrix[order_idx, stage_idx, machine_idx] = \
+                                        self.p_matrix[order_idx, stage_idx, other_machine_idx]
+                            print(f"  ✓ 修复: 工序 '{stage_name}' 设备 '{machine_id}' 使用了设备 '{other_machine_id}' 的时间")
+                            break
+        
+        # 最终检查:如果某个工序的所有可用设备都是inf,使用默认值
+        for stage_idx in range(num_stages):
+            stage_name = self.stage_names[stage_idx]
+            available_machines = self.stage_to_machines[stage_idx]
+            
+            all_inf = True
+            for machine_id in available_machines:
+                machine_idx = self.machine_list.index(machine_id)
+                if self.p_matrix[0, stage_idx, machine_idx] < np.inf:
+                    all_inf = False
+                    break
+            
+            if all_inf:
+                print(f"  ⚠️ 警告: 工序 '{stage_name}' 所有设备的时间都是inf,使用默认值20秒/片")
+                for machine_id in available_machines:
+                    machine_idx = self.machine_list.index(machine_id)
+                    for order_idx in range(num_orders):
+                        self.p_matrix[order_idx, stage_idx, machine_idx] = 20.0  # 默认值
         
         # 5. 构建工序映射
         global_op_idx = 0
@@ -204,7 +265,26 @@ class DataPreprocessor:
         print("✅ 数据结构构建完成")
         print(f"  - p_matrix shape: {self.p_matrix.shape}")
         print(f"  - 总工序数: {len(self.op_map_inv)}")
-        print(f"  - 工序-设备映射示例: {list(self.stage_to_machines.items())[:3]}")
+        print(f"  - 工序-设备映射: {self.stage_to_machines}")
+        
+        # 详细检查p_matrix
+        print("\n🔍 p_matrix完整性检查:")
+        for stage_idx in range(num_stages):
+            stage_name = self.stage_names[stage_idx]
+            available_machines = self.stage_to_machines[stage_idx]
+            print(f"  工序{stage_idx} ({stage_name}):")
+            for machine_id in available_machines:
+                machine_idx = self.machine_list.index(machine_id)
+                sample_time = self.p_matrix[0, stage_idx, machine_idx]
+                if sample_time < np.inf:
+                    print(f"    ✓ {machine_id}: {sample_time:.2f} 秒/片")
+                else:
+                    print(f"    ✗ {machine_id}: inf (数据缺失!)")
+        
+        # 检查是否有工序完全没有可用设备
+        for stage_idx in range(num_stages):
+            if len(self.stage_to_machines[stage_idx]) == 0:
+                raise ValueError(f"❌ 错误: 工序{stage_idx}没有任何可用设备!")
     
     def get_preprocessed_data(self) -> Dict:
         """返回所有预处理数据的字典"""
