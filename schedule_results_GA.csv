@@ -1,0 +1,26 @@
+﻿订单ID,工序阶段,设备ID,开始时间(秒),完成时间(秒),加工时长(秒),开始时间(小时),完成时间(小时),加工时长(小时)
+ORD-002,COG/FOG绑定,EQ-03,0.00,35540.00,35540.00,0.00,9.87,9.87
+ORD-003,COG/FOG绑定,EQ-06,0.00,137120.00,137120.00,0.00,38.09,38.09
+ORD-003,点胶,EQ-01,137120.00,inf,inf,38.09,inf,inf
+ORD-003,BLU组装,EQ-05,inf,inf,inf,inf,inf,inf
+ORD-003,Inspection,EQ-02,inf,inf,inf,inf,inf,inf
+ORD-003,Final Inspection,EQ-02,inf,inf,inf,inf,inf,inf
+ORD-004,COG/FOG绑定,EQ-03,35540.00,79965.00,44425.00,9.87,22.21,12.34
+ORD-004,点胶,EQ-01,inf,inf,inf,inf,inf,inf
+ORD-004,BLU组装,EQ-05,inf,inf,inf,inf,inf,inf
+ORD-004,Inspection,EQ-02,inf,inf,inf,inf,inf,inf
+ORD-004,Final Inspection,EQ-05,inf,inf,inf,inf,inf,inf
+ORD-001,COG/FOG绑定,EQ-06,137120.00,162830.00,25710.00,38.09,45.23,7.14
+ORD-001,点胶,EQ-04,162830.00,inf,inf,45.23,inf,inf
+ORD-001,BLU组装,EQ-02,inf,inf,inf,inf,inf,inf
+ORD-001,Inspection,EQ-05,inf,inf,inf,inf,inf,inf
+ORD-001,Final Inspection,EQ-02,inf,inf,inf,inf,inf,inf
+ORD-002,点胶,EQ-04,inf,inf,inf,inf,inf,inf
+ORD-002,BLU组装,EQ-05,inf,inf,inf,inf,inf,inf
+ORD-002,Inspection,EQ-05,inf,inf,inf,inf,inf,inf
+ORD-002,Final Inspection,EQ-02,inf,inf,inf,inf,inf,inf
+ORD-005,COG/FOG绑定,EQ-06,162830.00,214250.00,51420.00,45.23,59.51,14.28
+ORD-005,点胶,EQ-01,inf,inf,inf,inf,inf,inf
+ORD-005,BLU组装,EQ-05,inf,inf,inf,inf,inf,inf
+ORD-005,Inspection,EQ-02,inf,inf,inf,inf,inf,inf
+ORD-005,Final Inspection,EQ-05,inf,inf,inf,inf,inf,inf

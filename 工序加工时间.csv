@@ -1,0 +1,11 @@
+﻿流水线,工序,标准加工时间(秒/片),工序良率(%)
+Line_1,COG/FOG绑定,17.77,98.94
+Line_1,点胶,12.28,99.3
+Line_1,BLU组装,23.17,97.46
+Line_1,Inspection,9.56,99.86
+Line_1,Final Inspection,15.15,99.21
+Line_2,COG/FOG绑定,17.14,98.96
+Line_2,点胶,12.4,98.91
+Line_2,BLU组装,23.24,97.49
+Line_2,Inspection,9.8,99.52
+Line_2,Final Inspection,14.9,98.79

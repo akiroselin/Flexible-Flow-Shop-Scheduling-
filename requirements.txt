@@ -1,0 +1,5 @@
+numpy==1.24.3
+pandas==2.0.3
+mealpy==3.0.1
+plotly==5.18.0
+kaleido==0.2.1
