@@ -17,7 +17,8 @@ class FFSSimulator(Problem):
     
     def obj_func(self, solution):
         """
-        适应度函数(必须实现，新版mealpy API要求)
+        适应度函数(新版mealpy要求实现)。
+        委托到现有的 fit_func 以保持逻辑一致。
         """
         return self.fit_func(solution)
     
@@ -46,10 +47,7 @@ class FFSSimulator(Problem):
         self.num_machines = data['num_machines']
         self.total_ops = self.num_orders * self.num_stages
         
-        # 初始化mealpy Problem
         # 染色体维度: OS(25) + MS(25) = 50
-        # 使用FloatVar定义变量边界，适配新版mealpy API
-                # 染色体维度: OS(25) + MS(25) = 50
         lb = [0.0] * (self.total_ops * 2)
         bounds = []
         for _ in range(self.total_ops * 2):
@@ -67,6 +65,44 @@ class FFSSimulator(Problem):
         print(f"  - 工序阶段数: {self.num_stages}")
         print(f"  - 设备数: {self.num_machines}")
         print(f"  - 总工序数: {self.total_ops}")
+    
+    def generate_edd_solution(self) -> np.ndarray:
+        """
+        生成基于EDD+SPT启发式的初始解
+        用于提升GA初始种群质量
+        """
+        solution = np.zeros(self.total_ops * 2)
+        
+        # 按EDD规则排序订单(交货期+权重)
+        orders_priority = []
+        for order_idx, order_id in enumerate(self.order_list):
+            due = self.due_dates[order_id]
+            weight = self.weights[order_id]
+            total_proc_time = sum([
+                self._total_processing_times.get((order_idx, s), 0) 
+                for s in range(self.num_stages)
+            ])
+            # 优先级分数:越小越紧急
+            priority_score = due / weight  # 考虑权重
+            orders_priority.append((order_idx, order_id, priority_score, total_proc_time))
+        
+        # 按优先级排序
+        orders_priority.sort(key=lambda x: (x[2], x[3]))  # EDD primary, SPT secondary
+        
+        # OS染色体:按优先级分配递增值
+        for rank, (order_idx, _, _, _) in enumerate(orders_priority):
+            for stage_idx in range(self.num_stages):
+                op_idx = order_idx * self.num_stages + stage_idx
+                # 紧急订单分配小值(0.0-0.2),低优先级分配大值(0.8-0.99)
+                base_priority = rank / len(orders_priority)
+                stage_offset = stage_idx * 0.001  # 保证同订单内顺序
+                solution[op_idx] = base_priority + stage_offset
+        
+        # MS染色体:倾向选择负载较轻的设备(中间值,让GA优化)
+        for op_idx in range(self.total_ops):
+            solution[self.total_ops + op_idx] = 0.3 + np.random.uniform(0, 0.4)
+        
+        return solution
     
     def _precompute_processing_times(self):
         """预计算每个订单每个工序的加工时间(考虑数量)"""
@@ -112,30 +148,10 @@ class FFSSimulator(Problem):
                 if len(available_machines) == 0:
                     raise ValueError(f"工序{stage_idx}没有可用设备!")
                 
-                # 区间映射选择设备(增强版:自动避开inf值设备)
+                # 区间映射选择设备
                 machine_idx_in_list = int(m_value * len(available_machines))
                 machine_idx_in_list = min(machine_idx_in_list, len(available_machines) - 1)
-                
-                # 尝试选择有效设备
-                selected_machine_id = None
-                for attempt in range(len(available_machines)):
-                    test_idx = (machine_idx_in_list + attempt) % len(available_machines)
-                    test_machine_id = available_machines[test_idx]
-                    test_machine_idx = self.machine_list.index(test_machine_id)
-                    
-                    # 检查加工时间是否有效
-                    time_per_unit = self.p_matrix[order_idx, stage_idx, test_machine_idx]
-                    if time_per_unit < np.inf and time_per_unit > 0:
-                        selected_machine_id = test_machine_id
-                        break
-                
-                if selected_machine_id is None:
-                    # 所有设备都是inf,报错
-                    raise ValueError(
-                        f"订单{order_idx}的工序{stage_idx}所有可用设备的加工时间都是inf!\n"
-                        f"可用设备: {available_machines}\n"
-                        f"请检查p_matrix数据"
-                    )
+                selected_machine_id = available_machines[machine_idx_in_list]
                 
                 machine_assignment[(order_idx, stage_idx)] = selected_machine_id
         
@@ -154,13 +170,6 @@ class FFSSimulator(Problem):
                 
                 # 计算加工时间
                 time_per_unit = self.p_matrix[order_idx, stage_idx, machine_idx]
-                
-                # 安全检查
-                if time_per_unit >= np.inf or time_per_unit <= 0:
-                    raise ValueError(
-                        f"订单{order_id}工序{stage_idx}设备{machine_id}的加工时间异常: {time_per_unit}"
-                    )
-                
                 processing_time = time_per_unit * qty
                 
                 operations.append({
@@ -291,19 +300,22 @@ class FFSSimulator(Problem):
         """
         # ========== 步骤6: 计算加权总拖期 ==========
         total_tardiness = 0.0
+        urgent_extra = 0.0
+        lambda_urgent = 4.0  # 紧急订单额外惩罚系数(调低以平衡目标)
         for order_idx in range(self.num_orders):
             order_id = self.order_list[order_idx]
             C_i_seconds = completion_times.get(order_idx, 0.0)
-            C_i_days = C_i_seconds / 86400.0  # 秒转天
+            C_i_days = C_i_seconds / 86400.0
             d_i = self.due_dates[order_id]
             w_i = self.weights[order_id]
-            
             tardiness = max(0.0, C_i_days - d_i)
             total_tardiness += w_i * tardiness
+            if w_i >= 1.2 and tardiness > 0:
+                urgent_extra += lambda_urgent * w_i * tardiness
         
         # ========== 步骤7: 约束违反检查 ==========
-        penalty = 0.0
-        lambda_penalty = 1e6  # 惩罚系数
+        capacity_penalty = 0.0
+        lambda_capacity = 1e6  # 容量惩罚系数
         
         for machine_id in self.machine_list:
             # 计算设备实际工作时间
@@ -317,9 +329,92 @@ class FFSSimulator(Problem):
             # 违反容量约束
             if total_workload > capacity:
                 violation = total_workload - capacity
-                penalty += lambda_penalty * violation
+                capacity_penalty += lambda_capacity * violation
         
-        return total_tardiness, penalty
+        # ========== 步骤8: 分阶段负载均衡惩罚 ==========
+        balance_penalty = 0.0
+        lambda_balance = 15.0  # 负载均衡惩罚系数(中等)
+        for stage_idx in range(self.num_stages):
+            machines = self.stage_to_machines.get(stage_idx, [])
+            if len(machines) <= 1:
+                continue
+            utilizations = []
+            for m_id in machines:
+                capacity = self.machine_capacity[m_id] + 7200.0
+                workload = sum([
+                    s['processing_time'] for s in schedule 
+                    if s['machine_id'] == m_id and s['stage_idx'] == stage_idx
+                ])
+                util = (workload / capacity) if capacity > 0 else 0.0
+                utilizations.append(util)
+            if utilizations:
+                std_dev = float(np.std(utilizations))
+                balance_penalty += lambda_balance * std_dev
+        
+        # 返回加权目标
+        total_penalty = capacity_penalty + balance_penalty + urgent_extra
+        return total_tardiness, total_penalty
+    
+    def _calculate_avg_utilization(self, schedule: List) -> float:
+        """
+        计算平均设备利用率
+        
+        参数:
+            schedule: 调度记录列表
+            
+        返回:
+            avg_utilization: 平均利用率(0-1之间)
+        """
+        utilizations = []
+        for machine_id in self.machine_list:
+            total_work = sum([
+                s['processing_time'] for s in schedule if s['machine_id'] == machine_id
+            ])
+            capacity = self.machine_capacity[machine_id]
+            util = (total_work / capacity) if capacity > 0 else 0.0
+            utilizations.append(util)
+        
+        return np.mean(utilizations) if utilizations else 0.0
+    
+    def pareto_fitness(self, solution: np.ndarray) -> List[float]:
+        """
+        帕累托多目标适应度函数
+        
+        参数:
+            solution: 染色体(numpy数组,长度50)
+        
+        返回:
+            objectives: 多目标向量 [拖期+惩罚, -利用率, makespan]
+        """
+        try:
+            # 步骤1: 解码染色体
+            operations, machine_assignment = self._decode_chromosome(solution)
+            
+            # 步骤2: 工序排序(满足前驱约束)
+            sorted_operations = self._sort_with_precedence(operations)
+            
+            # 步骤3-5: 顺序调度仿真
+            completion_times, schedule = self._simulate_schedule(sorted_operations)
+            
+            # 步骤6-7: 计算目标函数和惩罚
+            total_tardiness, penalty = self._calculate_objective(completion_times, schedule)
+            
+            # 计算makespan(天)
+            makespan = max(completion_times.values()) / 86400.0 if completion_times else 0.0
+            
+            # 计算平均利用率
+            utilization = self._calculate_avg_utilization(schedule)
+            
+            # 返回多目标向量
+            return [
+                total_tardiness + penalty,    # 最小化拖期+惩罚
+                -utilization,                 # 最大化利用率(取负)
+                makespan                      # 最小化makespan
+            ]
+        
+        except Exception as e:
+            print(f"❌ 多目标适应度评估错误: {e}")
+            return [1e10, 0.0, 1e10]  # 返回极大惩罚值
     
     def fit_func(self, solution: np.ndarray) -> float:
         """
@@ -344,7 +439,7 @@ class FFSSimulator(Problem):
             # 步骤6-7: 计算目标函数和惩罚
             total_tardiness, penalty = self._calculate_objective(completion_times, schedule)
             
-            # 步骤8: 返回适应度(负目标函数,因为mealpy最小化)
+            # 步骤8: 返回适应度(最小化)
             fitness = total_tardiness + penalty
             
             return fitness

@@ -211,35 +211,30 @@ class ScheduleVisualizer:
 
 
 
-def export_results(simulator, best_solution: np.ndarray, data: Dict, 
-                   prefix: str = "schedule"):
+def export_results(completion_times: Dict, schedule: List, kpis: Dict, data: Dict, 
+                   algorithm: str = "GA"):
     """
     导出所有结果文件
     
     参数:
-        simulator: FFSSimulator实例
-        best_solution: 最优解染色体
+        completion_times: 订单完成时间字典
+        schedule: 调度方案列表
+        kpis: KPI指标字典
         data: 预处理数据
-        prefix: 文件名前缀
+        algorithm: 算法名称(GA/NSGA2等)
     """
     print("\n📤 导出结果...")
-    
-    # 评估最优解
-    result = simulator.evaluate_solution(best_solution)
-    schedule = result['schedule']
-    completion_times = result['completion_times']
-    kpis = result['kpis']
     
     # 创建可视化工具
     visualizer = ScheduleVisualizer(data)
     
     # 导出CSV
-    visualizer.export_schedule_csv(schedule, f"{prefix}_results_GA.csv")
-    visualizer.export_kpis_csv(kpis, completion_times, f"{prefix}_kpis_GA.csv")
-    visualizer.export_order_summary_csv(completion_times, f"{prefix}_orders_GA.csv")
+    visualizer.export_schedule_csv(schedule, f"schedule_results_{algorithm}.csv")
+    visualizer.export_kpis_csv(kpis, completion_times, f"schedule_kpis_{algorithm}.csv")
+    visualizer.export_order_summary_csv(completion_times, f"schedule_orders_{algorithm}.csv")
     
     # 生成甘特图
-    visualizer.generate_gantt_chart(schedule, f"{prefix}_gantt_GA.html")
+    visualizer.generate_gantt_chart(schedule, f"schedule_gantt_{algorithm}.html")
     
     # 打印KPI摘要
     print("\n📊 优化结果KPI:")
@@ -251,13 +246,17 @@ def export_results(simulator, best_solution: np.ndarray, data: Dict,
     print(f"  ✓ 瓶颈设备负载率: {kpis['bottleneck_load']:.2f} %")
     print(f"  ✓ 负载均衡度: {kpis['load_balance_std']:.2f} %")
     
-    return result
+    return {
+        'completion_times': completion_times,
+        'schedule': schedule,
+        'kpis': kpis
+    }
 
 
 if __name__ == "__main__":
     # 测试代码
     from data_preprocessor import DataPreprocessor
-    from ffs_simulator import FFSSimulator
+    from ffs_simulatorv2 import FFSSimulator
     
     print("🧪 测试可视化模块...")
     
