@@ -94,10 +94,18 @@ def main():
     print("\n🧬 初始化仿真器...")
     simulator = FFSSimulator(data)
     
+    # 新增: 调整目标函数权重与偏好设备以提升利用率与均衡度
+    simulator.lambda_balance = 30.0           # 加强均衡约束
+    simulator.lambda_utilization = 8.0        # 鼓励平均利用率提升
+    simulator.target_avg_util = 0.12          # 目标平均利用率(12%)
+    simulator.preferred_machines = {"EQ-06", "EQ-01", "EQ-03", "EQ-04"}
+    simulator.lambda_preferred = 2.0          # 偏好设备占比不足惩罚系数(温和)
+    simulator.target_preferred_ratio = 0.35   # 偏好设备目标占比(35%)
+    
     # 配置GA参数
     print("\n⚙️ GA参数配置:")
     pop_size = 100
-    epochs = 200
+    epochs = 100  # 提升到100以获得更稳定的自适应轨迹
     k_tourn_frac = 0.2
     ga_ctrl = AdaptiveGA(pc=0.8, pm=0.2)
     print(f"  • pop_size: {pop_size}")

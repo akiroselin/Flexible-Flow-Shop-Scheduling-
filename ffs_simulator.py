@@ -53,7 +53,14 @@ class FFSSimulator(Problem):
         for _ in range(self.total_ops * 2):
             bounds.append(FloatVar(lb=0.0, ub=0.9999))
         super().__init__(bounds=bounds, minmax="min", **kwargs)
-      
+        
+        # ========== 新增: 目标函数权重/偏好配置(默认较保守) ==========
+        self.lambda_balance = 15.0                # 负载均衡惩罚系数
+        self.lambda_utilization = 0.0             # 平均利用率不足惩罚系数
+        self.target_avg_util = 0.0                # 期望平均利用率(0-1)
+        self.preferred_machines = set()           # 偏好设备集合，如{"EQ-06","EQ-01","EQ-03","EQ-04"}
+        self.lambda_preferred = 0.0               # 偏好设备不足占比惩罚系数
+        self.target_preferred_ratio = 0.0         # 偏好设备目标占比(0-1)
         
         # 缓存数据
         self._total_processing_times = {}
@@ -333,7 +340,7 @@ class FFSSimulator(Problem):
         
         # ========== 步骤8: 分阶段负载均衡惩罚 ==========
         balance_penalty = 0.0
-        lambda_balance = 15.0  # 负载均衡惩罚系数(中等)
+        lambda_balance = self.lambda_balance  # 使用可配置权重
         for stage_idx in range(self.num_stages):
             machines = self.stage_to_machines.get(stage_idx, [])
             if len(machines) <= 1:
@@ -351,8 +358,22 @@ class FFSSimulator(Problem):
                 std_dev = float(np.std(utilizations))
                 balance_penalty += lambda_balance * std_dev
         
+        # ========== 新增: 平均利用率不足惩罚 ==========
+        avg_util = self._calculate_avg_utilization(schedule)  # 0-1
+        util_penalty = self.lambda_utilization * max(0.0, self.target_avg_util - avg_util)
+        
+        # ========== 新增: 偏好设备占比不足惩罚 ==========
+        total_workload = sum([s['processing_time'] for s in schedule])
+        preferred_ratio = 0.0
+        if total_workload > 0 and self.preferred_machines:
+            preferred_workload = sum([
+                s['processing_time'] for s in schedule if s['machine_id'] in self.preferred_machines
+            ])
+            preferred_ratio = preferred_workload / total_workload
+        preferred_penalty = self.lambda_preferred * max(0.0, self.target_preferred_ratio - preferred_ratio)
+        
         # 返回加权目标
-        total_penalty = capacity_penalty + balance_penalty + urgent_extra
+        total_penalty = capacity_penalty + balance_penalty + urgent_extra + util_penalty + preferred_penalty
         return total_tardiness, total_penalty
     
     def _calculate_avg_utilization(self, schedule: List) -> float:
