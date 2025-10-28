@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "flask==3.0.0",
     "mealpy>=3.0.2",
     "numpy>=2.3.4",
     "plotly>=6.3.1",

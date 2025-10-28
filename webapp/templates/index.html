@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1>供应链排程优化平台</h1>
+<p>欢迎使用基于遗传算法的柔性流水车间排程优化系统。</p>
+<p>本平台支持多工序、多设备的生产排程优化，帮助您实现更高效的生产计划。</p>
+
+<div style="margin-top: 30px;">
+    <h2>使用步骤</h2>
+    <ol>
+        <li>查看<a href="/model">排程逻辑与模型</a>了解优化原理</li>
+        <li>在<a href="/input">需求输入</a>页面上传您的数据文件</li>
+        <li>前往<a href="/result">排程优化与结果</a>页面运行算法并查看结果</li>
+    </ol>
+</div>
+{% endblock %}

@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1>排程优化与结果</h1>
+
+<div class="run-section" style="margin-bottom: 30px;">
+    <h2>运行排程优化</h2>
+    <p>点击下方按钮开始运行遗传算法进行排程优化：</p>
+    <form action="/run" method="post" style="margin-top: 15px;">
+        <button type="submit" class="btn">运行排程（GA）</button>
+    </form>
+</div>
+
+<div class="result-section">
+    <h2>结果文件下载</h2>
+    <ul>
+        <li><a href="/download/schedule_results_GA.csv">详细调度方案 (CSV)</a></li>
+        <li><a href="/download/schedule_kpis_GA.csv">KPI指标汇总 (CSV)</a></li>
+        <li><a href="/download/schedule_orders_GA.csv">订单完工情况 (CSV)</a></li>
+        <li><a href="/download/schedule_gantt_GA.html">甘特图 (HTML)</a></li>
+    </ul>
+</div>
+
+<div class="gantt-section">
+    <h2>交互式甘特图</h2>
+    <iframe src="/gantt" width="100%" height="600px" frameborder="0"></iframe>
+</div>
+{% endblock %}

@@ -1,0 +1,21 @@
+{% extends 'base.html' %}
+{% block content %}
+  <section>
+    <h2>排程逻辑与模型设计</h2>
+    <p>排程逻辑：数据预处理 → 染色体解码 → 仿真与目标函数 → 选择/交叉/变异 → 结果导出与可视化。</p>
+    <div class="diagram">
+      <pre class="mermaid">
+flowchart TD
+    A[数据预处理] --> B[染色体解码]
+    B --> C[仿真: 设备/工序约束]
+    C --> D[目标函数: 拖期/均衡/利用率]
+    D --> E[GA: 选择/交叉/变异]
+    E --> F[导出: CSV + 甘特图]
+      </pre>
+    </div>
+    <script type="module">
+      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
+      mermaid.initialize({ startOnLoad: true });
+    </script>
+  </section>
+{% endblock %}

@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+{% block content %}
+  <section>
+    <h2>需求输入</h2>
+    <p>请上传以下CSV文件（支持覆盖当前数据）：</p>
+    <form action="{{ url_for('input_page') }}" method="post" enctype="multipart/form-data">
+      <div class="input-row">
+        <label>工序加工时间.csv：</label>
+        <input type="file" name="process_times" accept=".csv" />
+      </div>
+      <div class="input-row">
+        <label>订单数据.csv：</label>
+        <input type="file" name="orders" accept=".csv" />
+      </div>
+      <div class="input-row">
+        <label>设备可用时间.csv：</label>
+        <input type="file" name="equipment" accept=".csv" />
+      </div>
+      <button type="submit">上传并保存</button>
+    </form>
+  </section>
+{% endblock %}
